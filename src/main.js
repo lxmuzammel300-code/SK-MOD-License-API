@@ -1,0 +1,79 @@
+
+import { Client, TablesDB, Query } from 'node-appwrite';
+
+const client = new Client()
+  .setEndpoint('https://sgp.cloud.appwrite.io/v1')
+  .setProject('6afd6f7d00292d7ccc28')
+  .setKey(process.env.APPWRITE_API_KEY);
+
+const tablesDB = new TablesDB(client);
+
+const DATABASE_ID = '6afd711b0030bf624271';
+const TABLE_ID = '6afd7197003514ba600a';
+
+export default async ({ req, res, log, error }) => {
+  if (req.method !== 'POST') {
+    return res.json({ success: false, message: 'POST required' }, 405);
+  }
+
+  try {
+    const body = req.bodyJson || {};
+    const key = String(body.license_key || '').trim();
+
+    if (!key || key.length > 255) {
+      return res.json({
+        success: false,
+        message: 'Invalid license key'
+      }, 400);
+    }
+
+    const result = await tablesDB.listRows({
+      databaseId: DATABASE_ID,
+      tableId: TABLE_ID,
+      queries: [
+        Query.equal('license_key', [key]),
+        Query.limit(1)
+      ]
+    });
+
+    if (result.rows.length === 0) {
+      return res.json({
+        success: false,
+        message: 'License key not found'
+      }, 404);
+    }
+
+    const license = result.rows[0];
+
+    if (license.status !== 'active') {
+      return res.json({
+        success: false,
+        message: 'License is not active'
+      }, 403);
+    }
+
+    if (license.expires_at &&
+        new Date(license.expires_at).getTime() <= Date.now()) {
+      return res.json({
+        success: false,
+        message: 'License expired'
+      }, 403);
+    }
+
+    return res.json({
+      success: true,
+      message: 'License verified',
+      duration_days: license.duration_days,
+      device_limit: license.device_limit,
+      expires_at: license.expires_at
+    });
+
+  } catch (e) {
+    error(e.message);
+    return res.json({
+      success: false,
+      message: 'Server error'
+    }, 500);
+  }
+};
+                     
